@@ -55,7 +55,29 @@ impl Drop for TrampolineRefCon {
 /// # Safety
 ///
 /// .
-pub unsafe extern "C" fn trampoline<
+pub unsafe extern "C" fn trampoline_reversed<
+    Param,
+    TRefCon,
+    Error: Into<OSStatus>,
+    F: FnMut(TRefCon, Param) -> Result<(), Error> + Send + 'static,
+>(
+    refcon: *mut TrampolineRefCon,
+    param: Param,
+) -> OSStatus {
+    let refcon_data = &*(refcon);
+    let mut user_data: F = ptr::read(refcon_data.0.cast());
+    let ret =
+        user_data(ptr::read(refcon_data.0.cast()), param).map_or_else(|err| err.into(), |_| 0);
+
+    ptr::drop_in_place(refcon);
+    ret
+}
+/// .
+///
+/// # Safety
+///
+/// .
+pub unsafe extern "C" fn cf_trampoline<
     Param: TCFType,
     T,
     Error: Into<OSStatus>,

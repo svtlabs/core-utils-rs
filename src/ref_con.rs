@@ -1,5 +1,6 @@
 use std::{
     ffi::c_void,
+    fmt::Display,
     ptr::{self, drop_in_place},
 };
 
@@ -57,20 +58,20 @@ impl Drop for TrampolineRefCon {
 /// .
 pub unsafe extern "C" fn trampoline_reversed<
     Param,
+    Error: Display,
     TRefCon,
-    Error: Into<OSStatus>,
     F: FnMut(TRefCon, Param) -> Result<(), Error> + Send + 'static,
 >(
     refcon: *mut TrampolineRefCon,
     param: Param,
-) -> OSStatus {
+) {
     let refcon_data = &*(refcon);
     let mut user_data: F = ptr::read(refcon_data.0.cast());
-    let ret =
-        user_data(ptr::read(refcon_data.0.cast()), param).map_or_else(|err| err.into(), |_| 0);
-
+    let ret = user_data(ptr::read(refcon_data.0.cast()), param);
+    if let Err(err) = ret {
+        eprintln!("Error: {err}");
+    }
     ptr::drop_in_place(refcon);
-    ret
 }
 /// .
 ///

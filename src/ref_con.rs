@@ -51,46 +51,52 @@ impl Drop for TrampolineRefCon {
     }
 }
 
-/// .
-///
-/// # Safety
-///
-/// .
-pub unsafe extern "C" fn trampoline_reversed<
-    Param,
-    Error: Display,
-    TRefCon,
-    F: FnMut(TRefCon, Param) -> Result<(), Error> + Send + 'static,
->(
-    refcon: *mut TrampolineRefCon,
-    param: Param,
-) {
-    let refcon_data = &*(refcon);
-    let mut user_data: F = ptr::read(refcon_data.0.cast());
-    let ret = user_data(ptr::read(refcon_data.0.cast()), param);
-    if let Err(err) = ret {
-        eprintln!("Error: {err}");
+#[macro_export]
+macro_rules! declare_trampoline {
+    ($name: ident  $(<$($generic_type: tt),*>)?($($arg_name:ident: $arg_type: ty),* $(,)?)) => {
+        /// .
+        ///
+        /// # Safety
+        ///
+        /// .
+        pub unsafe extern "C" fn $name<
+            $($($generic_type,)*)?
+            TRefcon,
+            FCallback: FnMut(TRefcon, $($arg_type),*) + Send + 'static,
+        >(
+            refcon: *mut TrampolineRefCon,
+            $($arg_name: $arg_type,)*
+        ) {
+            let refcon_data = &*(refcon);
+            let mut user_data: FCallback = ptr::read(refcon_data.0.cast());
+            user_data(
+                ptr::read(refcon_data.0.cast()),
+                $(&*$arg_name,)*
+            );
+
+            ptr::drop_in_place(refcon);
+        }
     }
-    ptr::drop_in_place(refcon);
 }
+
 /// .
 ///
 /// # Safety
 ///
 /// .
 pub unsafe extern "C" fn cf_trampoline<
-    Param: TCFType,
-    T,
+    ExtraParameter: TCFType,
+    TRefcon,
     Error: Into<OSStatus>,
-    F: FnMut(Param, T) -> Result<(), Error> + Send + 'static,
+    FCallback: FnMut(ExtraParameter, TRefcon) -> Result<(), Error> + Send + 'static,
 >(
-    param: Param::Ref,
+    param: ExtraParameter::Ref,
     refcon: *mut TrampolineRefCon,
 ) -> OSStatus {
     let refcon_data = &*(refcon);
-    let mut user_data: F = ptr::read(refcon_data.0.cast());
+    let mut user_data: FCallback = ptr::read(refcon_data.0.cast());
     let ret = user_data(
-        Param::wrap_under_get_rule(param),
+        ExtraParameter::wrap_under_get_rule(param),
         ptr::read(refcon_data.0.cast()),
     )
     .map_or_else(|err| err.into(), |_| 0);

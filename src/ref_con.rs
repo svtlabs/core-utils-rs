@@ -1,10 +1,4 @@
-use std::{
-    ffi::c_void,
-    fmt::Display,
-    ptr::{self, drop_in_place},
-};
-
-use core_foundation::base::{OSStatus, TCFType};
+use std::ffi::c_void;
 
 // In Apple's frameworks, a refcon parameter is often used as a way to pass user-defined data into a callback function. This is a common pattern in C and Objective-C APIs, especially those that deal with low-level system or hardware interactions.
 //
@@ -18,88 +12,32 @@ use core_foundation::base::{OSStatus, TCFType};
 // Remember that you need to ensure the data you're pointing to stays valid until the callback is called. If the data is a local variable in a function, and that function returns before the callback is called, then the refcon will be pointing to invalid memory. In such cases, you might need to dynamically allocate memory for the data (using malloc, for example) and then free it in the callback.
 pub type RefCon = *mut c_void;
 
-trait LeakedRefCon {
-    fn into_leaked_mut_ptr(self) -> *mut c_void;
+use libffi::high::ClosureOnce0;
+use libffi::high::FnPtr0;
+
+pub type ClosurePointer<'a> = *const FnPtr0<'a, ()>;
+pub type ClosureCaller = extern "C" fn(ClosurePointer, *const c_void);
+pub struct VoidTrampoline {
+    closure: ClosureOnce0<()>,
+    pub caller: ClosureCaller,
 }
 
-impl<T> LeakedRefCon for Option<T> {
-    fn into_leaked_mut_ptr(self) -> *mut c_void {
-        self.map_or(ptr::null_mut(), |r| {
-            Box::into_raw(Box::new(r)) as *mut c_void
-        })
-    }
-}
+pub trait Trampoline {}
 
-#[repr(C)]
-pub struct TrampolineRefCon(pub RefCon, pub *mut c_void);
-impl TrampolineRefCon {
-    pub fn new<T, F>(refcon: Option<T>, callback: F) -> Self {
-        Self(
-            refcon.into_leaked_mut_ptr(),
-            Box::leak(Box::new(callback)) as *mut F as *mut c_void,
-        )
-    }
-    pub fn into_leaked_mut_ptr(self) -> *mut Self {
-        let cb = Box::new(self);
-        Box::into_raw(cb)
-    }
-}
+impl Trampoline for VoidTrampoline {}
 
-impl Drop for TrampolineRefCon {
-    fn drop(&mut self) {
-        unsafe { drop_in_place(self.1) };
-    }
-}
-
-#[macro_export]
-macro_rules! declare_trampoline {
-    ($name: ident  $(<$($generic_type: tt),*>)?($($arg_name:ident: $arg_type: ty),* $(,)?)) => {
-        /// .
-        ///
-        /// # Safety
-        ///
-        /// .
-        pub unsafe extern "C" fn $name<
-            $($($generic_type,)*)?
-            TRefcon,
-            FCallback: FnMut(TRefcon, $($arg_type),*) + Send + 'static,
-        >(
-            refcon: *mut TrampolineRefCon,
-            $($arg_name: $arg_type,)*
-        ) {
-            let refcon_data = &*(refcon);
-            let mut user_data: FCallback = ptr::read(refcon_data.0.cast());
-            user_data(
-                ptr::read(refcon_data.0.cast()),
-                $(&*$arg_name,)*
-            );
-
-            ptr::drop_in_place(refcon);
+impl VoidTrampoline {
+    pub fn new<F: FnOnce() + 'static>(outter: F) -> Self {
+        extern "C" fn caller(closure: ClosurePointer, _: *const c_void) {
+            let callable = unsafe { closure.as_ref() }.unwrap();
+            callable.call();
+        }
+        Self {
+            closure: ClosureOnce0::new(outter),
+            caller,
         }
     }
-}
-
-/// .
-///
-/// # Safety
-///
-/// .
-pub unsafe extern "C" fn cf_trampoline<
-    ExtraParameter: TCFType,
-    TRefcon,
-    Error: Into<OSStatus>,
-    FCallback: FnMut(ExtraParameter, TRefcon) -> Result<(), Error> + Send + 'static,
->(
-    param: ExtraParameter::Ref,
-    refcon: *mut TrampolineRefCon,
-) -> OSStatus {
-    let refcon_data = &*(refcon);
-    let mut user_data: FCallback = ptr::read(refcon_data.0.cast());
-    let ret = user_data(
-        ExtraParameter::wrap_under_get_rule(param),
-        ptr::read(refcon_data.0.cast()),
-    )
-    .map_or_else(|err| err.into(), |_| 0);
-    ptr::drop_in_place(refcon);
-    ret
+    pub fn as_code_ptr(&self) -> ClosurePointer {
+        self.closure.code_ptr()
+    }
 }

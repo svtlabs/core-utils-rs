@@ -4,22 +4,25 @@ use std::{ffi::c_void, ptr};
 pub struct TrampolineRefcon(*mut c_void);
 
 #[repr(transparent)]
-pub struct TrampolineCallback(extern "C" fn(TrampolineRefcon));
+pub struct TrampolineCallback<Ret = (), Param = TrampolineRefcon>(
+    extern "C" fn(Param, TrampolineRefcon) -> Ret,
+);
 
-pub fn create_trampoline<F: FnOnce() + 'static>(
+pub fn create_trampoline<Ret, Param, F: FnOnce(Param) -> Ret + 'static>(
     wrapped_closure: F,
-) -> (TrampolineCallback, TrampolineRefcon) {
-    pub extern "C" fn caller<F>(closure_ptr: TrampolineRefcon)
+) -> (TrampolineCallback<Ret, Param>, TrampolineRefcon) {
+    pub extern "C" fn caller<Ret, Param, F>(param: Param, closure_ptr: TrampolineRefcon) -> Ret
     where
-        F: FnOnce(),
+        F: FnOnce(Param) -> Ret,
     {
+        println!("caller");
         unsafe {
             let closure: F = ptr::read(closure_ptr.0.cast());
-            closure();
-        };
+            closure(param)
+        }
     }
     (
-        TrampolineCallback(caller::<F>),
-        TrampolineRefcon(Box::into_raw(Box::new(wrapped_closure)) as *mut c_void),
+        TrampolineCallback(caller::<Ret, Param, F>),
+        TrampolineRefcon(Box::into_raw(Box::new(wrapped_closure)).cast()),
     )
 }

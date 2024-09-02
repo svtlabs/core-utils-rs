@@ -1,12 +1,14 @@
-pub type ClosurePointer = *mut Box<dyn FnOnce()>;
-pub type ClosureCaller = extern "C" fn(ClosurePointer);
+pub type TrampolineRefcon = *mut Box<dyn FnOnce()>;
+pub type TrampolineCallback = extern "C" fn(TrampolineRefcon);
 
-pub fn trampoline<F: FnOnce() + 'static>(closure: F) -> (ClosureCaller, ClosurePointer) {
-    pub extern "C" fn caller(closure: ClosurePointer) {
+pub fn create_trampoline<F: FnOnce() + 'static>(
+    wrapped_closure: F,
+) -> (TrampolineCallback, TrampolineRefcon) {
+    pub extern "C" fn caller(closure_ptr: TrampolineRefcon) {
         unsafe {
-            let closure = Box::from_raw(closure);
+            let closure = Box::from_raw(closure_ptr);
             closure();
         };
     }
-    (caller, Box::into_raw(Box::new(Box::new(closure))))
+    (caller, Box::into_raw(Box::new(Box::new(wrapped_closure))))
 }

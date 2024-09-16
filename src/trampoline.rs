@@ -5,13 +5,13 @@ pub struct TrampolineRefcon(*mut c_void);
 
 #[repr(transparent)]
 pub struct TrampolineCallback<Ret = (), Param = TrampolineRefcon>(
-    extern "C" fn(Param, TrampolineRefcon) -> Ret,
+    extern "C" fn(TrampolineRefcon, Param) -> Ret,
 );
 
 pub fn create_trampoline<Ret, Param, F: FnOnce(Param) -> Ret + 'static>(
     wrapped_closure: F,
 ) -> (TrampolineCallback<Ret, Param>, TrampolineRefcon) {
-    pub extern "C" fn caller<Ret, Param, F>(param: Param, closure_ptr: TrampolineRefcon) -> Ret
+    pub extern "C" fn caller<Ret, Param, F>(closure_ptr: TrampolineRefcon, param: Param) -> Ret
     where
         F: FnOnce(Param) -> Ret,
     {

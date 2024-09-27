@@ -3,7 +3,10 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+
+#[derive(Debug)]
 pub struct LockGuard<T: LockGuardTrait>(pub T);
+#[derive(Debug)]
 pub struct MutLockGuard<T: MutLockGuardTrait>(pub T);
 
 impl<T: LockGuardTrait> Drop for LockGuard<T> {
@@ -37,7 +40,7 @@ impl<T: MutLockGuardTrait> DerefMut for MutLockGuard<T> {
 }
 
 pub trait LockTrait<T: LockGuardTrait, E: Error> {
-    fn lock(&self) -> Result<LockGuard<T>, E>;
+   fn lock(&self) -> Result<LockGuard<T>, E>;
 }
 
 pub trait LockGuardTrait {

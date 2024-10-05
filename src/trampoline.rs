@@ -12,7 +12,7 @@ pub struct TrampolineRightCallback<Ret = (), Param = TrampolineRefcon>(
     extern "C" fn(Param, TrampolineRefcon) -> Ret,
 );
 
-pub fn create_left_trampoline<Ret, Param, F: FnOnce(Param) -> Ret + 'static>(
+pub fn create_left_trampoline<Ret, Param, F: 'static + Send + FnOnce(Param) -> Ret>(
     wrapped_closure: F,
 ) -> (TrampolineLeftCallback<Ret, Param>, TrampolineRefcon) {
     pub extern "C" fn caller<Ret, Param, F>(closure_ptr: TrampolineRefcon, param: Param) -> Ret
@@ -31,7 +31,7 @@ pub fn create_left_trampoline<Ret, Param, F: FnOnce(Param) -> Ret + 'static>(
     )
 }
 
-pub fn create_right_trampoline<Ret, Param, F: FnOnce(Param) -> Ret + 'static>(
+pub fn create_right_trampoline<Ret, Param, F: 'static + Send + FnOnce(Param) -> Ret>(
     wrapped_closure: F,
 ) -> (TrampolineRightCallback<Ret, Param>, TrampolineRefcon) {
     pub extern "C" fn caller<Ret, Param, F>(param: Param, closure_ptr: TrampolineRefcon) -> Ret

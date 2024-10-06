@@ -17,4 +17,5 @@ license = "MIT OR Apache-2.0"
 
 
 [dependencies]
+core-foundation = { version = "0.10" }
 four-char-code = { version = "2", default-features = false }
